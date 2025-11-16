@@ -1,219 +1,212 @@
-{\rtf1\ansi\ansicpg1252\cocoartf2867
-\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
-{\colortbl;\red255\green255\blue255;}
-{\*\expandedcolortbl;;}
-\margl1440\margr1440\vieww11520\viewh8400\viewkind0
-\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+const $ = (s) => document.querySelector(s);
 
-\f0\fs24 \cf0 const $ = (s) => document.querySelector(s);\
-\
-// ---------- Excel \uc0\u8594  Players ----------\
-$('#excelInput').addEventListener('change', (e) => \{\
-  const file = e.target.files[0];\
-  if (!file) return;\
-  const reader = new FileReader();\
-  reader.onload = (ev) => \{\
-    const data = new Uint8Array(ev.target.result);\
-    const workbook = XLSX.read(data, \{ type: 'array' \});\
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];\
-    const json = XLSX.utils.sheet_to_json(sheet);\
-    window.players = json.map(row => (\{\
-      name: String(row.Name || row.name || '').trim(),\
-      rating: parseFloat(row.Rating || row.rating),\
-      gender: String(row.Gender || row.gender || '').trim().toUpperCase()\
-    \})).filter(p => p.name && !isNaN(p.rating) && ['M','F','O'].includes(p.gender));\
-    alert(`Loaded $\{window.players.length\} players`);\
-  \};\
-  reader.readAsArrayBuffer(file);\
-\});\
-\
-// ---------- Core Scheduler ----------\
-function generateSchedule(players, \{ courts, rounds, tolerance \}) \{\
-  const schedule = [];\
-  const usedPairs = new Set(); // "A|B" (sorted alphabetically)\
-\
-  for (let r = 0; r < rounds; r++) \{\
-    const roundMatches = [];\
-    const available = players.filter(p => !roundMatches.flatMap(m => m.players).includes(p));\
-    const shuffled = shuffle(available);\
-\
-    let attempts = 0;\
-    while (roundMatches.length < courts && available.length >= 4 && attempts < 100) \{\
-      attempts++;\
-      const pool = shuffled.filter(p => !roundMatches.flatMap(m => m.players).includes(p));\
-      if (pool.length < 4) break;\
-\
-      // Try to form a mixed or same-gender pair\
-      const candidates = findValidDoubles(pool, tolerance, usedPairs);\
-      if (!candidates) continue;\
-\
-      const [p1, p2, p3, p4] = candidates;\
-      const pairKey1 = [p1.name, p2.name].sort().join('|');\
-      const pairKey2 = [p3.name, p4.name].sort().join('|');\
-      usedPairs.add(pairKey1);\
-      usedPairs.add(pairKey2);\
-\
-      // Randomly assign teams\
-      const teams = shuffle([p1, p2, p3, p4]);\
-      roundMatches.push(\{\
-        court: roundMatches.length + 1,\
-        teamA: [teams[0], teams[1]].sort((a,b)=>a.name.localeCompare(b.name)),\
-        teamB: [teams[2], teams[3]].sort((a,b)=>a.name.localeCompare(b.name)),\
-        players: [p1,p2,p3,p4]\
-      \});\
-    \}\
-\
-    if (roundMatches.length === 0) \{\
-      alert(`Warning: Round $\{r+1\} could not fill all courts.`);\
-    \}\
-    schedule.push(\{ round: r + 1, matches: roundMatches \});\
-  \}\
-  return schedule;\
-\}\
-\
-// Find 4 players: rating-balanced, no repeat pairs, mixed if possible\
-function findValidDoubles(pool, tolerance, usedPairs) \{\
-  const males = pool.filter(p => p.gender === 'M');\
-  const females = pool.filter(p => p.gender === 'F');\
-  const others = pool.filter(p => p.gender === 'O');\
-\
-  // Prefer mixed if possible\
-  if (males.length >= 2 && females.length >= 2) \{\
-    const pair1 = findPair(males, tolerance, usedPairs);\
-    const pair2 = findPair(females, tolerance, usedPairs);\
-    if (pair1 && pair2) return [...pair1, ...pair2];\
-  \}\
-\
-  // Try M+M + F+F\
-  if (males.length >= 4) \{\
-    const p1 = findPair(males, tolerance, usedPairs);\
-    if (p1) \{\
-      const remaining = males.filter(p => !p1.includes(p));\
-      const p2 = findPair(remaining, tolerance, usedPairs);\
-      if (p2) return [...p1, ...p2];\
-    \}\
-  \}\
-  if (females.length >= 4) \{\
-    const p1 = findPair(females, tolerance, usedPairs);\
-    if (p1) \{\
-      const remaining = females.filter(p => !p1.includes(p));\
-      const p2 = findPair(remaining, tolerance, usedPairs);\
-      if (p2) return [...p1, ...p2];\
-    \}\
-  \}\
-\
-  // Fallback: any 4 within tolerance\
-  const sorted = pool.sort((a,b) => a.rating - b.rating);\
-  for (let i = 0; i <= sorted.length - 4; i++) \{\
-    const group = sorted.slice(i, i+4);\
-    if (Math.max(...group.map(p=>p.rating)) - Math.min(...group.map(p=>p.rating)) <= tolerance * 2) \{\
-      const [a,b,c,d] = shuffle(group);\
-      const pair1 = [a,b], pair2 = [c,d];\
-      const k1 = pair1.map(p=>p.name).sort().join('|');\
-      const k2 = pair2.map(p=>p.name).sort().join('|');\
-      if (!usedPairs.has(k1) && !usedPairs.has(k2)) \{\
-        usedPairs.add(k1); usedPairs.add(k2);\
-        return [a,b,c,d];\
-      \}\
-    \}\
-  \}\
-  return null;\
-\}\
-\
-function findPair(group, tolerance, usedPairs) \{\
-  const sorted = group.sort((a,b) => a.rating - b.rating);\
-  for (let i = 0; i < sorted.length; i++) \{\
-    for (let j = i+1; j < sorted.length; j++) \{\
-      if (Math.abs(sorted[i].rating - sorted[j].rating) <= tolerance) \{\
-        const key = [sorted[i].name, sorted[j].name].sort().join('|');\
-        if (!usedPairs.has(key)) \{\
-          usedPairs.add(key);\
-          return [sorted[i], sorted[j]];\
-        \}\
-      \}\
-    \}\
-  \}\
-  return null;\
-\}\
-\
-function shuffle(arr) \{\
-  const a = arr.slice();\
-  for (let i = a.length - 1; i > 0; i--) \{\
-    const j = Math.floor(Math.random() * (i + 1));\
-    [a[i], a[j]] = [a[j], a[i]];\
-  \}\
-  return a;\
-\}\
-\
-// ---------- Render ----------\
-function renderSchedule(schedule) \{\
-  const container = $('#schedule');\
-  container.innerHTML = '';\
-\
-  schedule.forEach((\{ round, matches \}) => \{\
-    const roundDiv = document.createElement('div');\
-    roundDiv.className = 'mb-8';\
-    roundDiv.innerHTML = `<h3 class="text-xl font-bold text-green-600 mb-3">Round $\{round\} (30 min)</h3>`;\
-\
-    const table = document.createElement('table');\
-    table.className = 'w-full border-collapse bg-gray-50';\
-    table.innerHTML = `<tr class="bg-green-100">\
-      <th class="border p-3 text-left">Court</th>\
-      <th class="border p-3 text-left">Team A</th>\
-      <th class="border p-3 text-left">Team B</th>\
-      <th class="border p-3 text-left">Avg Rating</th>\
-    </tr>`;\
-\
-    matches.forEach(m => \{\
-      const avgA = ((m.teamA[0].rating + m.teamA[1].rating)/2).toFixed(2);\
-      const avgB = ((m.teamB[0].rating + m.teamB[1].rating)/2).toFixed(2);\
-      const row = document.createElement('tr');\
-      row.className = 'hover:bg-gray-100';\
-      row.innerHTML = `\
-        <td class="border p-3 font-medium">Court $\{m.court\}</td>\
-        <td class="border p-3">$\{formatTeam(m.teamA)\}</td>\
-        <td class="border p-3">$\{formatTeam(m.teamB)\}</td>\
-        <td class="border p-3 text-center">$\{avgA\} vs $\{avgB\}</td>\
-      `;\
-      table.appendChild(row);\
-    \});\
-    roundDiv.appendChild(table);\
-    container.appendChild(roundDiv);\
-  \});\
-\}\
-\
-function formatTeam(team) \{\
-  return team.map(p => `$\{p.name\} <span class="text-gray-500">($\{p.rating\})</span>`).join(' + ');\
-\}\
-\
-// ---------- Export CSV ----------\
-$('#exportCsv').addEventListener('click', () => \{\
-  let csv = 'Round,Court,Team A Player 1,Rating,Gender,Team A Player 2,Rating,Gender,Team B Player 1,Rating,Gender,Team B Player 2,Rating,Gender\\n';\
-  window.lastSchedule.forEach((\{ round, matches \}) => \{\
-    matches.forEach(m => \{\
-      const [a1, a2] = m.teamA;\
-      const [b1, b2] = m.teamB;\
-      csv += `$\{round\},$\{m.court\},$\{a1.name\},$\{a1.rating\},$\{a1.gender\},$\{a2.name\},$\{a2.rating\},$\{a2.gender\},$\{b1.name\},$\{b1.rating\},$\{b1.gender\},$\{b2.name\},$\{b2.rating\},$\{b2.gender\}\\n`;\
-    \});\
-  \});\
-  const blob = new Blob([csv], \{ type: 'text/csv' \});\
-  const url = URL.createObjectURL(blob);\
-  const a = document.createElement('a');\
-  a.href = url; a.download = 'aacta_schedule.csv'; a.click();\
-\});\
-\
-// ---------- Generate Button ----------\
-$('#generateBtn').addEventListener('click', () => \{\
-  if (!window.players || window.players.length < 8) \{\
-    return alert('Upload Excel with at least 8 players');\
-  \}\
-  const opts = \{\
-    courts: parseInt($('#courts').value) || 4,\
-    rounds: parseInt($('#rounds').value) || 6,\
-    tolerance: parseFloat($('#tolerance').value) || 0.5\
-  \};\
-  const schedule = generateSchedule(window.players, opts);\
-  window.lastSchedule = schedule;\
-  renderSchedule(schedule);\
-  $('#results').classList.remove('hidden');\
-\});
+// ---------- Excel → Players ----------
+$('#excelInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const data = new Uint8Array(ev.target.result);
+    const workbook = XLSX.read(data, { type: 'array' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(sheet);
+    window.players = json.map(row => ({
+      name: String(row.Name || row.name || '').trim(),
+      rating: parseFloat(row.Rating || row.rating),
+      gender: String(row.Gender || row.gender || '').trim().toUpperCase()
+    })).filter(p => p.name && !isNaN(p.rating) && ['M','F','O'].includes(p.gender));
+    alert(`Loaded ${window.players.length} players`);
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+// ---------- Core Scheduler ----------
+function generateSchedule(players, { courts, rounds, tolerance }) {
+  const schedule = [];
+  const usedPairs = new Set(); // "A|B" (sorted alphabetically)
+
+  for (let r = 0; r < rounds; r++) {
+    const roundMatches = [];
+    const available = players.filter(p => !roundMatches.flatMap(m => m.players).includes(p));
+    const shuffled = shuffle(available);
+
+    let attempts = 0;
+    while (roundMatches.length < courts && available.length >= 4 && attempts < 100) {
+      attempts++;
+      const pool = shuffled.filter(p => !roundMatches.flatMap(m => m.players).includes(p));
+      if (pool.length < 4) break;
+
+      // Try to form a mixed or same-gender pair
+      const candidates = findValidDoubles(pool, tolerance, usedPairs);
+      if (!candidates) continue;
+
+      const [p1, p2, p3, p4] = candidates;
+      const pairKey1 = [p1.name, p2.name].sort().join('|');
+      const pairKey2 = [p3.name, p4.name].sort().join('|');
+      usedPairs.add(pairKey1);
+      usedPairs.add(pairKey2);
+
+      // Randomly assign teams
+      const teams = shuffle([p1, p2, p3, p4]);
+      roundMatches.push({
+        court: roundMatches.length + 1,
+        teamA: [teams[0], teams[1]].sort((a,b)=>a.name.localeCompare(b.name)),
+        teamB: [teams[2], teams[3]].sort((a,b)=>a.name.localeCompare(b.name)),
+        players: [p1,p2,p3,p4]
+      });
+    }
+
+    if (roundMatches.length === 0) {
+      alert(`Warning: Round ${r+1} could not fill all courts.`);
+    }
+    schedule.push({ round: r + 1, matches: roundMatches });
+  }
+  return schedule;
+}
+
+// Find 4 players: rating-balanced, no repeat pairs, mixed if possible
+function findValidDoubles(pool, tolerance, usedPairs) {
+  const males = pool.filter(p => p.gender === 'M');
+  const females = pool.filter(p => p.gender === 'F');
+  const others = pool.filter(p => p.gender === 'O');
+
+  // Prefer mixed if possible
+  if (males.length >= 2 && females.length >= 2) {
+    const pair1 = findPair(males, tolerance, usedPairs);
+    const pair2 = findPair(females, tolerance, usedPairs);
+    if (pair1 && pair2) return [...pair1, ...pair2];
+  }
+
+  // Try M+M + F+F
+  if (males.length >= 4) {
+    const p1 = findPair(males, tolerance, usedPairs);
+    if (p1) {
+      const remaining = males.filter(p => !p1.includes(p));
+      const p2 = findPair(remaining, tolerance, usedPairs);
+      if (p2) return [...p1, ...p2];
+    }
+  }
+  if (females.length >= 4) {
+    const p1 = findPair(females, tolerance, usedPairs);
+    if (p1) {
+      const remaining = females.filter(p => !p1.includes(p));
+      const p2 = findPair(remaining, tolerance, usedPairs);
+      if (p2) return [...p1, ...p2];
+    }
+  }
+
+  // Fallback: any 4 within tolerance
+  const sorted = pool.sort((a,b) => a.rating - b.rating);
+  for (let i = 0; i <= sorted.length - 4; i++) {
+    const group = sorted.slice(i, i+4);
+    if (Math.max(...group.map(p=>p.rating)) - Math.min(...group.map(p=>p.rating)) <= tolerance * 2) {
+      const [a,b,c,d] = shuffle(group);
+      const pair1 = [a,b], pair2 = [c,d];
+      const k1 = pair1.map(p=>p.name).sort().join('|');
+      const k2 = pair2.map(p=>p.name).sort().join('|');
+      if (!usedPairs.has(k1) && !usedPairs.has(k2)) {
+        usedPairs.add(k1); usedPairs.add(k2);
+        return [a,b,c,d];
+      }
+    }
+  }
+  return null;
+}
+
+function findPair(group, tolerance, usedPairs) {
+  const sorted = group.sort((a,b) => a.rating - b.rating);
+  for (let i = 0; i < sorted.length; i++) {
+    for (let j = i+1; j < sorted.length; j++) {
+      if (Math.abs(sorted[i].rating - sorted[j].rating) <= tolerance) {
+        const key = [sorted[i].name, sorted[j].name].sort().join('|');
+        if (!usedPairs.has(key)) {
+          usedPairs.add(key);
+          return [sorted[i], sorted[j]];
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// ---------- Render ----------
+function renderSchedule(schedule) {
+  const container = $('#schedule');
+  container.innerHTML = '';
+
+  schedule.forEach(({ round, matches }) => {
+    const roundDiv = document.createElement('div');
+    roundDiv.className = 'mb-8';
+    roundDiv.innerHTML = `<h3 class="text-xl font-bold text-green-600 mb-3">Round ${round} (30 min)</h3>`;
+
+    const table = document.createElement('table');
+    table.className = 'w-full border-collapse bg-gray-50';
+    table.innerHTML = `<tr class="bg-green-100">
+      <th class="border p-3 text-left">Court</th>
+      <th class="border p-3 text-left">Team A</th>
+      <th class="border p-3 text-left">Team B</th>
+      <th class="border p-3 text-left">Avg Rating</th>
+    </tr>`;
+
+    matches.forEach(m => {
+      const avgA = ((m.teamA[0].rating + m.teamA[1].rating)/2).toFixed(2);
+      const avgB = ((m.teamB[0].rating + m.teamB[1].rating)/2).toFixed(2);
+      const row = document.createElement('tr');
+      row.className = 'hover:bg-gray-100';
+      row.innerHTML = `
+        <td class="border p-3 font-medium">Court ${m.court}</td>
+        <td class="border p-3">${formatTeam(m.teamA)}</td>
+        <td class="border p-3">${formatTeam(m.teamB)}</td>
+        <td class="border p-3 text-center">${avgA} vs ${avgB}</td>
+      `;
+      table.appendChild(row);
+    });
+    roundDiv.appendChild(table);
+    container.appendChild(roundDiv);
+  });
+}
+
+function formatTeam(team) {
+  return team.map(p => `${p.name} <span class="text-gray-500">(${p.rating})</span>`).join(' + ');
+}
+
+// ---------- Export CSV ----------
+$('#exportCsv').addEventListener('click', () => {
+  let csv = 'Round,Court,Team A Player 1,Rating,Gender,Team A Player 2,Rating,Gender,Team B Player 1,Rating,Gender,Team B Player 2,Rating,Gender\n';
+  window.lastSchedule.forEach(({ round, matches }) => {
+    matches.forEach(m => {
+      const [a1, a2] = m.teamA;
+      const [b1, b2] = m.teamB;
+      csv += `${round},${m.court},${a1.name},${a1.rating},${a1.gender},${a2.name},${a2.rating},${a2.gender},${b1.name},${b1.rating},${b1.gender},${b2.name},${b2.rating},${b2.gender}\n`;
+    });
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'aacta_schedule.csv'; a.click();
+});
+
+// ---------- Generate Button ----------
+$('#generateBtn').addEventListener('click', () => {
+  if (!window.players || window.players.length < 8) {
+    return alert('Upload Excel with at least 8 players');
+  }
+  const opts = {
+    courts: parseInt($('#courts').value) || 4,
+    rounds: parseInt($('#rounds').value) || 6,
+    tolerance: parseFloat($('#tolerance').value) || 0.5
+  };
+  const schedule = generateSchedule(window.players, opts);
+  window.lastSchedule = schedule;
+  renderSchedule(schedule);
+  $('#results').classList.remove('hidden');
+});
