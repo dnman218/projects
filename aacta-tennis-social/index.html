@@ -5,41 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AACTA Doubles Social Scheduler</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- SheetJS for Excel -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body class="bg-gradient-to-br from-green-50 to-blue-50 min-h-screen p-4">
   <div class="max-w-5xl mx-auto bg-white rounded-xl shadow-xl p-6">
     <h1 class="text-3xl font-bold text-green-700 mb-6">AACTA Doubles Social Scheduler</h1>
 
-    <!-- Upload -->
     <div class="mb-6">
       <label class="block font-semibold mb-2">Upload Attendance Excel (.xlsx)</label>
       <input type="file" id="excelInput" accept=".xlsx" class="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-700" />
-      <p class="text-xs text-gray-500 mt-1">Columns required: <code class="bg-gray-100 px-1">Name</code>, <code class="bg-gray-100 px-1">Rating</code> (numeric), <code class="bg-gray-100 px-1">Gender</code> (M/F/O)</p>
+      <p class="text-xs text-gray-500 mt-1">Columns: <code class="bg-gray-100 px-1">Name</code>, <code class="bg-gray-100 px-1">Rating</code>, <code class="bg-gray-100 px-1">Gender</code> (M/F/O)</p>
     </div>
 
-    <!-- Settings -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      <div>
-        <label class="block font-medium">Courts Available</label>
-        <input id="courts" type="number" min="1" value="4" class="w-full p-2 border rounded" />
-      </div>
-      <div>
-        <label class="block font-medium">Rounds (30-min each)</label>
-        <input id="rounds" type="number" min="1" value="6" class="w-full p-2 border rounded" />
-      </div>
-      <div>
-        <label class="block font-medium">Rating Tolerance (±)</label>
-        <input id="tolerance" type="number" step="0.1" value="0.5" class="w-full p-2 border rounded" />
-      </div>
+      <div><label class="block font-medium">Courts</label><input id="courts" type="number" min="1" value="4" class="w-full p-2 border rounded" /></div>
+      <div><label class="block font-medium">Rounds (30-min)</label><input id="rounds" type="number" min="1" value="6" class="w-full p-2 border rounded" /></div>
+      <div><label class="block font-medium">Rating Tolerance (±)</label><input id="tolerance" type="number" step="0.1" value="0.5" class="w-full p-2 border rounded" /></div>
     </div>
 
     <button id="generateBtn" class="bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 mb-6">
       Generate Full Schedule
     </button>
 
-    <!-- Results -->
     <div id="results" class="hidden">
       <div class="flex justify-between items-center mb-4">
         <h2 class="text-2xl font-semibold">Full Schedule</h2>
@@ -49,6 +36,188 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script>
+    const $ = (s) => document.querySelector(s);
+
+    $('#excelInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const data = new Uint8Array(ev.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet);
+        window.players = json.map(row => ({
+          name: String(row.Name || row.name || '').trim(),
+          rating: parseFloat(row.Rating || row.rating),
+          gender: String(row.Gender || row.gender || '').trim().toUpperCase()
+        })).filter(p => p.name && !isNaN(p.rating) && ['M','F','O'].includes(p.gender));
+        alert(`Loaded ${window.players.length} players`);
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    function generateSchedule(players, { courts, rounds, tolerance }) {
+      const schedule = [];
+      const usedPairs = new Set();
+      for (let r = 0; r < rounds; r++) {
+        const roundMatches = [];
+        const available = players.filter(p => !roundMatches.flatMap(m => m.players).includes(p));
+        const shuffled = shuffle(available);
+        let attempts = 0;
+        while (roundMatches.length < courts && available.length >= 4 && attempts < 100) {
+          attempts++;
+          const pool = shuffled.filter(p => !roundMatches.flatMap(m => m.players).includes(p));
+          if (pool.length < 4) break;
+          const candidates = findValidDoubles(pool, tolerance, usedPairs);
+          if (!candidates) continue;
+          const [p1, p2, p3, p4] = candidates;
+          const pairKey1 = [p1.name, p2.name].sort().join('|');
+          const pairKey2 = [p3.name, p4.name].sort().join('|');
+          usedPairs.add(pairKey1); usedPairs.add(pairKey2);
+          const teams = shuffle([p1, p2, p3, p4]);
+          roundMatches.push({
+            court: roundMatches.length + 1,
+            teamA: [teams[0], teams[1]].sort((a,b)=>a.name.localeCompare(b.name)),
+            teamB: [teams[2], teams[3]].sort((a,b)=>a.name.localeCompare(b.name)),
+            players: [p1,p2,p3,p4]
+          });
+        }
+        schedule.push({ round: r + 1, matches: roundMatches });
+      }
+      return schedule;
+    }
+
+    function findValidDoubles(pool, tolerance, usedPairs) {
+      const males = pool.filter(p => p.gender === 'M');
+      const females = pool.filter(p => p.gender === 'F');
+      if (males.length >= 2 && females.length >= 2) {
+        const pair1 = findPair(males, tolerance, usedPairs);
+        const pair2 = findPair(females, tolerance, usedPairs);
+        if (pair1 && pair2) return [...pair1, ...pair2];
+      }
+      if (males.length >= 4) {
+        const p1 = findPair(males, tolerance, usedPairs);
+        if (p1) {
+          const rem = males.filter(p => !p1.includes(p));
+          const p2 = findPair(rem, tolerance, usedPairs);
+          if (p2) return [...p1, ...p2];
+        }
+      }
+      if (females.length >= 4) {
+        const p1 = findPair(females, tolerance, usedPairs);
+        if (p1) {
+          const rem = females.filter(p => !p1.includes(p));
+          const p2 = findPair(rem, tolerance, usedPairs);
+          if (p2) return [...p1, ...p2];
+        }
+      }
+      const sorted = pool.sort((a,b) => a.rating - b.rating);
+      for (let i = 0; i <= sorted.length - 4; i++) {
+        const group = sorted.slice(i, i+4);
+        if (Math.max(...group.map(p=>p.rating)) - Math.min(...group.map(p=>p.rating)) <= tolerance * 2) {
+          const [a,b,c,d] = shuffle(group);
+          const k1 = [a.name,b.name].sort().join('|');
+          const k2 = [c.name,d.name].sort().join('|');
+          if (!usedPairs.has(k1) && !usedPairs.has(k2)) {
+            usedPairs.add(k1); usedPairs.add(k2);
+            return [a,b,c,d];
+          }
+        }
+      }
+      return null;
+    }
+
+    function findPair(group, tolerance, usedPairs) {
+      const sorted = group.sort((a,b) => a.rating - b.rating);
+      for (let i = 0; i < sorted.length; i++) {
+        for (let j = i+1; j < sorted.length; j++) {
+          if (Math.abs(sorted[i].rating - sorted[j].rating) <= tolerance) {
+            const key = [sorted[i].name, sorted[j].name].sort().join('|');
+            if (!usedPairs.has(key)) {
+              usedPairs.add(key);
+              return [sorted[i], sorted[j]];
+            }
+          }
+        }
+      }
+      return null;
+    }
+
+    function shuffle(arr) {
+      const a = arr.slice();
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    }
+
+    function renderSchedule(schedule) {
+      const container = $('#schedule');
+      container.innerHTML = '';
+      schedule.forEach(({ round, matches }) => {
+        const roundDiv = document.createElement('div');
+        roundDiv.className = 'mb-8';
+        roundDiv.innerHTML = `<h3 class="text-xl font-bold text-green-600 mb-3">Round ${round} (30 min)</h3>`;
+        const table = document.createElement('table');
+        table.className = 'w-full border-collapse bg-gray-50';
+        table.innerHTML = `<tr class="bg-green-100">
+          <th class="border p-3 text-left">Court</th>
+          <th class="border p-3 text-left">Team A</th>
+          <th class="border p-3 text-left">Team B</th>
+          <th class="border p-3 text-left">Avg Rating</th>
+        </tr>`;
+        matches.forEach(m => {
+          const avgA = ((m.teamA[0].rating + m.teamA[1].rating)/2).toFixed(2);
+          const avgB = ((m.teamB[0].rating + m.teamB[1].rating)/2).toFixed(2);
+          const row = document.createElement('tr');
+          row.className = 'hover:bg-gray-100';
+          row.innerHTML = `
+            <td class="border p-3 font-medium">Court ${m.court}</td>
+            <td class="border p-3">${formatTeam(m.teamA)}</td>
+            <td class="border p-3">${formatTeam(m.teamB)}</td>
+            <td class="border p-3 text-center">${avgA} vs ${avgB}</td>
+          `;
+          table.appendChild(row);
+        });
+        roundDiv.appendChild(table);
+        container.appendChild(roundDiv);
+      });
+    }
+
+    function formatTeam(team) {
+      return team.map(p => `${p.name} <span class="text-gray-500">(${p.rating})</span>`).join(' + ');
+    }
+
+    $('#exportCsv').addEventListener('click', () => {
+      let csv = 'Round,Court,Team A Player 1,Rating,Gender,Team A Player 2,Rating,Gender,Team B Player 1,Rating,Gender,Team B Player 2,Rating,Gender\n';
+      window.lastSchedule.forEach(({ round, matches }) => {
+        matches.forEach(m => {
+          const [a1, a2] = m.teamA;
+          const [b1, b2] = m.teamB;
+          csv += `${round},${m.court},${a1.name},${a1.rating},${a1.gender},${a2.name},${a2.rating},${a2.gender},${b1.name},${b1.rating},${b1.gender},${b2.name},${b2.rating},${b2.gender}\n`;
+        });
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'aacta_schedule.csv'; a.click();
+    });
+
+    $('#generateBtn').addEventListener('click', () => {
+      if (!window.players || window.players.length < 8) return alert('Upload Excel with at least 8 players');
+      const opts = {
+        courts: parseInt($('#courts').value) || 4,
+        rounds: parseInt($('#rounds').value) || 6,
+        tolerance: parseFloat($('#tolerance').value) || 0.5
+      };
+      const schedule = generateSchedule(window.players, opts);
+      window.lastSchedule = schedule;
+      renderSchedule(schedule);
+      $('#results').classList.remove('hidden');
+    });
+  </script>
 </body>
 </html>
