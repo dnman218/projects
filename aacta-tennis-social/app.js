@@ -216,4 +216,4 @@ $('#generateBtn').addEventListener('click', () => \{\
   window.lastSchedule = schedule;\
   renderSchedule(schedule);\
   $('#results').classList.remove('hidden');\
-\});}
+\});
