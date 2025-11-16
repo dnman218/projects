@@ -1,61 +1,54 @@
-{\rtf1\ansi\ansicpg1252\cocoartf2867
-\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
-{\colortbl;\red255\green255\blue255;}
-{\*\expandedcolortbl;;}
-\margl1440\margr1440\vieww11520\viewh8400\viewkind0
-\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AACTA Doubles Social Scheduler</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS for Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body class="bg-gradient-to-br from-green-50 to-blue-50 min-h-screen p-4">
+  <div class="max-w-5xl mx-auto bg-white rounded-xl shadow-xl p-6">
+    <h1 class="text-3xl font-bold text-green-700 mb-6">AACTA Doubles Social Scheduler</h1>
 
-\f0\fs24 \cf0 <!DOCTYPE html>\
-<html lang="en">\
-<head>\
-  <meta charset="UTF-8" />\
-  <meta name="viewport" content="width=device-width, initial-scale=1" />\
-  <title>AACTA Doubles Social Scheduler</title>\
-  <script src="https://cdn.tailwindcss.com"></script>\
-  <!-- SheetJS for Excel -->\
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>\
-</head>\
-<body class="bg-gradient-to-br from-green-50 to-blue-50 min-h-screen p-4">\
-  <div class="max-w-5xl mx-auto bg-white rounded-xl shadow-xl p-6">\
-    <h1 class="text-3xl font-bold text-green-700 mb-6">AACTA Doubles Social Scheduler</h1>\
-\
-    <!-- Upload -->\
-    <div class="mb-6">\
-      <label class="block font-semibold mb-2">Upload Attendance Excel (.xlsx)</label>\
-      <input type="file" id="excelInput" accept=".xlsx" class="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-700" />\
-      <p class="text-xs text-gray-500 mt-1">Columns required: <code class="bg-gray-100 px-1">Name</code>, <code class="bg-gray-100 px-1">Rating</code> (numeric), <code class="bg-gray-100 px-1">Gender</code> (M/F/O)</p>\
-    </div>\
-\
-    <!-- Settings -->\
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">\
-      <div>\
-        <label class="block font-medium">Courts Available</label>\
-        <input id="courts" type="number" min="1" value="4" class="w-full p-2 border rounded" />\
-      </div>\
-      <div>\
-        <label class="block font-medium">Rounds (30-min each)</label>\
-        <input id="rounds" type="number" min="1" value="6" class="w-full p-2 border rounded" />\
-      </div>\
-      <div>\
-        <label class="block font-medium">Rating Tolerance (\'b1)</label>\
-        <input id="tolerance" type="number" step="0.1" value="0.5" class="w-full p-2 border rounded" />\
-      </div>\
-    </div>\
-\
-    <button id="generateBtn" class="bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 mb-6">\
-      Generate Full Schedule\
-    </button>\
-\
-    <!-- Results -->\
-    <div id="results" class="hidden">\
-      <div class="flex justify-between items-center mb-4">\
-        <h2 class="text-2xl font-semibold">Full Schedule</h2>\
-        <button id="exportCsv" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Export CSV</button>\
-      </div>\
-      <div id="schedule"></div>\
-    </div>\
-  </div>\
-\
-  <script src="app.js"></script>\
-</body>\
-</html>}
+    <!-- Upload -->
+    <div class="mb-6">
+      <label class="block font-semibold mb-2">Upload Attendance Excel (.xlsx)</label>
+      <input type="file" id="excelInput" accept=".xlsx" class="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-700" />
+      <p class="text-xs text-gray-500 mt-1">Columns required: <code class="bg-gray-100 px-1">Name</code>, <code class="bg-gray-100 px-1">Rating</code> (numeric), <code class="bg-gray-100 px-1">Gender</code> (M/F/O)</p>
+    </div>
+
+    <!-- Settings -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div>
+        <label class="block font-medium">Courts Available</label>
+        <input id="courts" type="number" min="1" value="4" class="w-full p-2 border rounded" />
+      </div>
+      <div>
+        <label class="block font-medium">Rounds (30-min each)</label>
+        <input id="rounds" type="number" min="1" value="6" class="w-full p-2 border rounded" />
+      </div>
+      <div>
+        <label class="block font-medium">Rating Tolerance (±)</label>
+        <input id="tolerance" type="number" step="0.1" value="0.5" class="w-full p-2 border rounded" />
+      </div>
+    </div>
+
+    <button id="generateBtn" class="bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 mb-6">
+      Generate Full Schedule
+    </button>
+
+    <!-- Results -->
+    <div id="results" class="hidden">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-2xl font-semibold">Full Schedule</h2>
+        <button id="exportCsv" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Export CSV</button>
+      </div>
+      <div id="schedule"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
